@@ -99,6 +99,8 @@ PROC current.time (CHAN SIGNAL s!, CHAN [3]INT reading!)
       s ! SIGNAL
 :
 
+--{{{ PROC zero.clock (VAL BOOL reset)
+-- Zeros the clock module. "Sets the time", if you prefer.
 PROC zero.clock (VAL BOOL reset)
   IF
     reset
@@ -109,14 +111,17 @@ PROC zero.clock (VAL BOOL reset)
     TRUE
       SKIP
 :
+--}}}
 
-PROC display (CHAN [3]INT time?, CHAN INT light?)
+PROC display (CHAN [3]INT time?, CHAN INT light?, temp?)
   [3]INT hms:
-  INT lv:
+  INT lv, tv:
   WHILE TRUE
     SEQ
-      time ? hms
-      light ? lv
+      PAR
+        time ? hms
+        light ? lv
+        temp ? tv
       serial.write.string (TX0, "T ")
       SEQ i = 2 FOR 3 STEP -1    
         SEQ
@@ -124,20 +129,53 @@ PROC display (CHAN [3]INT time?, CHAN INT light?)
           serial.write.string (TX0, " ")
       serial.write.string (TX0, " L ")
       serial.write.int (TX0, lv)
+      serial.write.string (TX0, " T ")
+      serial.write.int(TX0, tv)
       serial.write.string (TX0, "*n")
 :
+
+--{{{ PROC signal.delta (CHAN SIGNAL s?, s1!, s2!)
+-- Splits a signal into two.
+PROC signal.delta (CHAN SIGNAL s?, s1!, s2!)
+  WHILE TRUE
+    SEQ
+      s ? SIGNAL
+      PAR
+        s1 ! SIGNAL
+        s2 ! SIGNAL
+:
+--}}}
+
+--{{{ PROC convert.temp (CHAN INT in?, out!)
+-- Converts a raw ADC reading to degrees Celcius.
+-- Could use a more elegant solution within the bounds
+-- of a 16-bit INT. Cheated and used 32 bits.
+PROC convert.temp (CHAN INT in?, out!)
+  WHILE TRUE
+    INT v:
+    INT32 lv:
+    SEQ
+      in ? v
+      lv := (INT32 v)
+      lv := (lv * 250) / 1024
+      out ! (INT lv)
+:
+--}}}
 
 PROC main ()
   SEQ
     serial.setup(TX0, 57600)
     zero.clock(FALSE)
 
-    CHAN SIGNAL s:
+    CHAN SIGNAL s, s1, s2:
     CHAN [3]INT time:
-    CHAN INT light:
+    CHAN INT light, temp.raw, temp.conv:
     PAR
       current.time (s!, time!)
-      adc (A0, VCC, s?, light!)
-      display (time?, light?)
+      signal.delta (s?, s1!, s2!)
+      adc (A0, VCC, s1?, light!)
+      adc (A1, VCC, s2?, temp.raw!)
+      convert.temp (temp.raw?, temp.conv!)
+      display (time?, light?, temp.conv?)
 :      
    
