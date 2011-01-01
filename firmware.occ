@@ -11,90 +11,103 @@ PROC status ()
     serial.write.string(TX0, "*n")
 :
 
-PROC write.byte (VAL BYTE dev, VAL BYTE addr, VAL BYTE b)
+VAL INT BYTE.ADDR IS 0:
+VAL INT WORD.ADDR IS 1:
+PROC twi.write.byte (VAL BYTE dev, VAL INT addr.size, VAL INT addr, VAL BYTE b)
   SEQ
-    --serialWrite("-> ")
-    --serialWriteInt(INT addr)
-    --serialWrite("*n") 
     twi.init() 
     twi.start()
-    --status()
     twi.set.tx.addr((dev << 1))
-    --status()
-    twi.tx(addr)
-    --status()
+    IF
+      addr.size = BYTE.ADDR
+        twi.tx(BYTE addr)
+      addr.size = WORD.ADDR
+        SEQ
+          twi.tx((BYTE (addr >> 8)))
+          twi.tx((BYTE (addr BITAND #FF)))
+      TRUE
+        SKIP
+
     twi.tx(b)
-    --status()
     twi.stop()
 :    
 
-PROC read.byte (VAL BYTE dev, VAL BYTE addr, BYTE b)
+INLINE PROC clock.write (VAL INT addr, VAL BYTE b)
+  twi.write.byte(#68, BYTE.ADDR, addr, b)
+:
+
+INLINE PROC eeprom.write (VAL INT addr, VAL BYTE b)
+  twi.write.byte(#50, WORD.ADDR, addr, b)
+:
+
+PROC twi.read (VAL BYTE dev, VAL INT addr.size, VAL INT addr, RESULT BYTE b)
   SEQ
-    --serialWrite("<- ")
-    --serialWriteInt(INT addr)
-    --serialWrite("*n") 
     twi.init()
     twi.start()
-    --status()
     twi.set.tx.addr((dev << 1))
-    --status()
-    twi.tx(addr)
-    --status()
-    --serialWrite("RESTART*n")
+    IF
+      addr.size = BYTE.ADDR
+        twi.tx(BYTE addr)
+      addr.size = WORD.ADDR
+        SEQ
+          twi.tx((BYTE (addr >> 8)))
+          twi.tx((BYTE (addr BITAND #FF)))
+      TRUE
+        SKIP
     twi.start()
-    --status()
-    --serialWrite("RX ADDR*n")
     twi.set.rx.addr((dev << 1) \/ 1)
-    --status()
-    --serialWrite("READ BYTE*n")
     twi.read.byte(TWI.NACK, b)
-    --status()
     twi.stop()
 :
 
-PROC read.bytes (VAL BYTE dev, VAL BYTE addr, []BYTE bs)
+INLINE PROC clock.read (VAL INT addr, RESULT BYTE b)
+  twi.read (#68, BYTE.ADDR, addr, b)
+:
+
+INLINE PROC eeprom.read (VAL INT addr, RESULT BYTE b)
+  twi.read (#50, WORD.ADDR, addr, b)
+:
+
+PROC twi.read.many (VAL BYTE dev, VAL INT addr.size, VAL INT addr, RESULT []BYTE bs)
   SEQ
-    --serialWrite("<- ")
-    --serialWriteInt(INT addr)
-    --serialWrite("*n") 
     twi.init()
     twi.start()
-    --status()
     twi.set.tx.addr((dev << 1))
-    --status()
-    twi.tx(addr)
-    --status()
-    --serialWrite("RESTART*n")
+    IF
+      addr.size = BYTE.ADDR
+        twi.tx(BYTE addr)
+      addr.size = WORD.ADDR
+        SEQ
+          twi.tx((BYTE (addr >> 8)))
+          twi.tx((BYTE (addr BITAND #FF)))
+      TRUE
+        SKIP
     twi.start()
-    --status()
-    --serialWrite("RX ADDR*n")
     twi.set.rx.addr((dev << 1) \/ 1)
-    --status()
-    --serialWrite("READ BYTE*n")
     SEQ i = 0 FOR ((SIZE bs) - 1)
       twi.read.byte(TWI.ACK, bs[i])
     twi.read.byte(TWI.NACK, bs[(SIZE bs) - 1])
-    --status()
     twi.stop()
 :
-INT FUNCTION bcd.to.dec (VAL INT bcd)
-  INT result:
-  VALOF
-    SEQ
-      result := (((bcd BITAND #F0) >> 4) * 10) + (bcd BITAND #0F)
-    RESULT result
+
+INLINE PROC clock.read.many (VAL INT addr, RESULT []BYTE bs)
+  twi.read.many (#68, BYTE.ADDR, #00, bs)
 :
 
-PROC current.time (CHAN SIGNAL s!, CHAN [3]INT reading!)
-  [3]INT hms:
+INLINE PROC eeprom.read.many (VAL INT addr, RESULT []BYTE bs)
+  twi.read.many (#50, WORD.ADDR, #00, bs)
+:
+
+PROC current.time (CHAN SIGNAL s!, CHAN [3]BYTE reading!)
+  [3]BYTE hms:
   [3]BYTE b:
   #PRAGMA DEFINED b
   WHILE TRUE
     SEQ
-      read.bytes(#68, #00, b)
-      hms[0] := ((((INT b[0]) BITAND #F0) >> 4) * 10) + ((INT b[0]) BITAND #0F)
-      hms[1] := ((((INT b[1]) BITAND #F0) >> 4) * 10) + ((INT b[1]) BITAND #0F)
-      hms[2] := ((((INT b[2]) BITAND #30) >> 4) * 10) + ((INT b[2]) BITAND #0F)
+      clock.read.many (#00, b)
+      hms[0] := (((b[0] BITAND #F0) >> 4) * 10) + (b[0] BITAND #0F)
+      hms[1] := (((b[1] BITAND #F0) >> 4) * 10) + (b[1] BITAND #0F)
+      hms[2] := (((b[2] BITAND #30) >> 4) * 10) + (b[2] BITAND #0F)
       reading ! hms
       s ! SIGNAL
 :
@@ -104,33 +117,34 @@ PROC current.time (CHAN SIGNAL s!, CHAN [3]INT reading!)
 PROC zero.clock (VAL BOOL reset)
   IF
     reset
-      SEQ
-        write.byte(#68, #00, #00)
-        write.byte(#68, #01, #00)
-        write.byte(#68, #02, #00)
+      SEQ i = 0 FOR 3
+        clock.write (i, #00)
     TRUE
       SKIP
 :
 --}}}
 
-PROC display (CHAN [3]INT time?, CHAN INT light?, temp?)
-  [3]INT hms:
-  INT lv, tv:
+PROC display (CHAN [3]BYTE time?, CHAN INT light?, temp.curr?, temp.prev?)
+  [3]BYTE hms:
+  INT lv, t.c, t.p:
   WHILE TRUE
     SEQ
       PAR
         time ? hms
         light ? lv
-        temp ? tv
+        temp.curr ? t.c
+        temp.prev ? t.p
       serial.write.string (TX0, "T ")
       SEQ i = 2 FOR 3 STEP -1    
         SEQ
-          serial.write.int (TX0, hms[i])
+          serial.write.int (TX0, (INT hms[i]))
           serial.write.string (TX0, " ")
       serial.write.string (TX0, " L ")
       serial.write.int (TX0, lv)
-      serial.write.string (TX0, " T ")
-      serial.write.int(TX0, tv)
+      serial.write.string (TX0, " TC ")
+      serial.write.int(TX0, t.c)
+      serial.write.string (TX0, " TP ")
+      serial.write.int(TX0, t.p)
       serial.write.string (TX0, "*n")
 :
 
@@ -162,20 +176,98 @@ PROC convert.temp (CHAN INT in?, out!)
 :
 --}}}
 
+PROC init.EEPROM.addr (VAL BOOL reset)
+  SEQ
+    IF
+      reset
+        SEQ
+          serial.write.string (TX0, "EEPROM... ")
+          -- Use #00, #01 as the address storage.
+          -- Data should begin at #0002.
+          eeprom.write (#00, #00) -- MSB
+          eeprom.write (#01, #02) -- LSB
+          serial.write.string (TX0, "reset.*n")
+      TRUE
+        SKIP
+:
+
+PROC store (CHAN INT t.in?, t.curr!, t.prev!)
+  WHILE TRUE
+    INT temp:
+    INT addr, next.addr:
+    BYTE nibble, stored:
+    SEQ
+      t.in ? temp
+      -- Get the addr of the prev temperature
+      -- and calc. the addr for the next one.
+      eeprom.read (#00, nibble)
+      addr := (INT nibble) << 8
+      eeprom.read (#01, nibble)
+      addr := (addr BITOR (INT nibble))
+      next.addr := addr + 1
+
+      -- Read in the stored temp
+      -- WARNING WARNING WARNING
+      -- We store BYTEs, because the temperature
+      -- should never exceed the value of a BYTE.
+      eeprom.read(addr, stored)
+      -- Store the current temperature
+      eeprom.write(next.addr, (BYTE temp))
+      -- And store the next address
+      eeprom.write(0, (BYTE (next.addr >> 8)))
+      eeprom.write(1, (BYTE (next.addr BITAND #FF)))
+
+      PAR
+        t.curr ! (INT temp)
+        t.prev ! (INT stored)
+:
+
+PROC display.last.n.readings (VAL INT n)
+  INT addr:
+  BYTE nibble:
+  SEQ
+    eeprom.read (#00, nibble)
+    addr := (INT nibble) << 8
+    eeprom.read (#01, nibble)
+    addr := (addr BITOR (INT nibble))
+    SEQ i = 0 FOR n
+      IF
+        (addr - i) > 1
+          BYTE reading:
+          SEQ
+            eeprom.read(addr - i, reading)
+            serial.write.int (TX0, n - i)
+            serial.write.string (TX0, " ")
+            serial.write.int (TX0, (INT reading))
+            serial.write.string (TX0, "*n")
+        TRUE
+          SKIP
+:
+
+VAL BOOL FULL.RESET IS FALSE:    
 PROC main ()
   SEQ
-    serial.setup(TX0, 57600)
-    zero.clock(FALSE)
+    serial.setup (TX0, 57600)
+    zero.clock (FULL.RESET)
+    init.EEPROM.addr (FULL.RESET)
+    IF
+      FULL.RESET
+        STOP
+      TRUE
+        SKIP
+ 
+    display.last.n.readings (10)
 
     CHAN SIGNAL s, s1, s2:
-    CHAN [3]INT time:
-    CHAN INT light, temp.raw, temp.conv:
+    CHAN [3]BYTE time:
+    CHAN INT light, temp.raw, temp.conv, temp.current, temp.prev:
     PAR
       current.time (s!, time!)
       signal.delta (s?, s1!, s2!)
       adc (A0, VCC, s1?, light!)
       adc (A1, VCC, s2?, temp.raw!)
       convert.temp (temp.raw?, temp.conv!)
-      display (time?, light?, temp.conv?)
+      store (temp.conv?, temp.current!, temp.prev!)
+      display (time?, light?, temp.current?, temp.prev?)
 :      
-   
+ 
