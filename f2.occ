@@ -1,0 +1,193 @@
+#INCLUDE "plumbing.module"
+#INCLUDE "eeprom.24LC256.module"
+#INCLUDE "twi3.module"
+
+INLINE PROC clock.write (VAL INT addr, VAL BYTE b)
+  twi.write (#68, TWI.ADDR.8, addr, b)
+:
+
+INLINE PROC clock.read (VAL INT addr, RESULT BYTE b)
+  twi.read (#68, TWI.ADDR.8, addr, b)
+:
+
+INLINE PROC clock.read.many (VAL INT addr, RESULT []BYTE bs)
+  twi.read.many (#68, TWI.ADDR.8, #00, bs)
+:
+
+PROC current.time (CHAN SIGNAL s!, CHAN [3]BYTE reading!)
+  [3]BYTE hms:
+  [3]BYTE b:
+  #PRAGMA DEFINED b
+  WHILE TRUE
+    SEQ
+      clock.read.many (#00, b)
+      hms[0] := (((b[0] BITAND #F0) >> 4) * 10) + (b[0] BITAND #0F)
+      hms[1] := (((b[1] BITAND #F0) >> 4) * 10) + (b[1] BITAND #0F)
+      hms[2] := (((b[2] BITAND #30) >> 4) * 10) + (b[2] BITAND #0F)
+      reading ! hms
+      s ! SIGNAL
+:
+
+
+PROC display (CHAN [3]BYTE time?, CHAN INT light?, temp.curr?, temp.prev?)
+  [3]BYTE hms:
+  INT lv, t.c, t.p:
+  WHILE TRUE
+    SEQ
+      PAR
+        time ? hms
+        light ? lv
+        temp.curr ? t.c
+        temp.prev ? t.p
+      serial.write.string (TX0, "T ")
+      SEQ i = 2 FOR 3 STEP -1    
+        SEQ
+          serial.write.int (TX0, (INT hms[i]))
+          serial.write.string (TX0, " ")
+      serial.write.string (TX0, " L ")
+      serial.write.int (TX0, lv)
+      serial.write.string (TX0, " TC ")
+      serial.write.int(TX0, t.c)
+      serial.write.string (TX0, " TP ")
+      serial.write.int(TX0, t.p)
+      serial.write.string (TX0, "*n")
+:
+
+--{{{ PROC signal.delta (CHAN SIGNAL s?, s1!, s2!)
+-- Splits a signal into two.
+PROC signal.delta (CHAN SIGNAL s?, s1!, s2!)
+  WHILE TRUE
+    SEQ
+      s ? SIGNAL
+      PAR
+        s1 ! SIGNAL
+        s2 ! SIGNAL
+:
+--}}}
+
+--{{{ PROC convert.temp (CHAN INT in?, out!)
+-- Converts a raw ADC reading to degrees Celcius.
+-- Could use a more elegant solution within the bounds
+-- of a 16-bit INT. Cheated and used 32 bits.
+PROC convert.temp (CHAN INT in?, out!)
+  WHILE TRUE
+    INT v:
+    INT32 lv:
+    SEQ
+      in ? v
+      lv := (INT32 v)
+      lv := (lv * 250) / 1024
+      out ! (INT lv)
+:
+--}}}
+
+
+PROC store (CHAN EEPROM e!, CHAN BYTE resp?, CHAN INT t.in?, t.curr!, t.prev!)
+  WHILE TRUE
+    INT temp:
+    INT addr, next.addr:
+    BYTE msb, lsb, stored:
+    SEQ
+      t.in ? temp
+      -- Read in the stored temp
+      e ! get.pointer
+      resp ? msb
+      resp ? lsb
+      addr := ((INT msb) << 8) BITOR (INT lsb)
+      e ! get.byte ; addr - 1
+      resp ? stored  
+      -- Store the current temperature
+      e ! put.next.byte ; (BYTE temp)
+      PAR
+        t.curr ! (INT temp)
+        t.prev ! (INT stored)
+:
+
+PROC display.last.n.readings (VAL INT n)
+  CHAN EEPROM e:
+  CHAN BYTE resp:
+  PAR
+    eeprom.24LC256 (e?, resp!)
+
+    INT addr:
+    BYTE msb, lsb:
+    SEQ
+      e ! get.pointer
+      resp ? msb
+      resp ? lsb
+      addr := ((INT msb) << 8) BITOR (INT lsb)
+      SEQ i = 0 FOR n
+        IF
+          (addr - i) > 1
+            BYTE reading:
+            SEQ
+              e ! get.byte ; (addr - i)
+              resp ? reading
+              serial.write.int (TX0, n - i)
+              serial.write.string (TX0, " ")
+              serial.write.int (TX0, (INT reading))
+              serial.write.string (TX0, "*n")
+          TRUE
+            SKIP
+      e ! stop
+:
+
+PROC main ()
+  SEQ
+    serial.setup (TX0, 57600)
+
+    display.last.n.readings (3)
+
+    CHAN SIGNAL s, s1, s2:
+    CHAN [3]BYTE time:
+    CHAN INT light, temp.raw, temp.conv, temp.current, temp.prev:
+    CHAN EEPROM e:
+    CHAN BYTE e.resp:
+    PAR
+      eeprom.24LC256 (e?, e.resp!)
+      current.time (s!, time!)
+      signal.delta (s?, s1!, s2!)
+      adc (A0, VCC, s1?, light!)
+      adc (A1, VCC, s2?, temp.raw!)
+      convert.temp (temp.raw?, temp.conv!)
+      store (e!, e.resp?, temp.conv?, temp.current!, temp.prev!)
+      display (time?, light?, temp.current?, temp.prev?)
+:      
+
+PROC test.pir ()
+  SEQ
+    serial.write.string (TX0, "Powering down.*n")
+    digital.mode (5, OUTPUT)
+    digital.write (5, LOW)
+    digital.mode (3, INPUT)
+    digital.write (3, LOW)
+    delay (1000)
+    serial.write.string (TX0, "Powering up.*n")
+    digital.write (5, HIGH)
+    serial.write.string (TX0, "Stabilizing.*n")
+    delay (5000)
+    serial.write.string (TX0, "Sensing.*n")
+    TIMER tim:
+    INT s, e:
+    INITIAL BOOL MOTION IS FALSE:
+    WHILE TRUE
+      LEVEL l:
+      SEQ
+        digital.read (3, l)
+        IF
+          (l = HIGH) AND (NOT MOTION)
+            SEQ
+              tim ? s
+              MOTION := TRUE
+              digital.write (13, l)
+          (l = LOW) AND MOTION
+            SEQ
+              tim ? e
+              MOTION := FALSE
+              digital.write (13, l)
+              serial.write.string (TX0, "[ ")
+              serial.write.int    (TX0, e MINUS s)
+              serial.write.string (TX0, " ]*n")
+          TRUE
+            SKIP
+:

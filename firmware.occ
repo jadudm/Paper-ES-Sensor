@@ -1,4 +1,5 @@
 #INCLUDE "plumbing.module"
+#INCLUDE "eeprom.24LC256.module"
 #INCLUDE "twi2.module"
 
 
@@ -249,25 +250,22 @@ PROC main ()
   SEQ
     serial.setup (TX0, 57600)
     zero.clock (FULL.RESET)
-    init.EEPROM.addr (FULL.RESET)
-    IF
-      FULL.RESET
-        STOP
-      TRUE
-        SKIP
  
     display.last.n.readings (10)
 
     CHAN SIGNAL s, s1, s2:
     CHAN [3]BYTE time:
     CHAN INT light, temp.raw, temp.conv, temp.current, temp.prev:
+    CHAN EEPROM e:
+    CHAN BYTE e.resp:
     PAR
+      eeprom.24lc256 (e?, e.resp!)
       current.time (s!, time!)
       signal.delta (s?, s1!, s2!)
       adc (A0, VCC, s1?, light!)
       adc (A1, VCC, s2?, temp.raw!)
       convert.temp (temp.raw?, temp.conv!)
-      store (temp.conv?, temp.current!, temp.prev!)
+      store (e!, e.resp?, temp.conv?, temp.current!, temp.prev!)
       display (time?, light?, temp.current?, temp.prev?)
 :      
  

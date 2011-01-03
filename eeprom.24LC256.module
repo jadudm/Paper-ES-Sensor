@@ -1,0 +1,112 @@
+--** occam-pi/Plumbing TWI interface to the 24LC258 EEPROM.
+-- Depends on twi2.module
+-- @module 24lc256
+
+#IF NOT (DEFINED (eeprom.24LC256.MODULE))
+#DEFINE eeprom.24LC256.MODULE
+
+#INCLUDE "plumbing.module"
+#INCLUDE "twi3.module"
+
+PROTOCOL EEPROM
+  CASE
+    device.addr ; BYTE
+    reset.pointer
+    get.pointer
+    dereference.pointer
+    put.byte ; INT ; BYTE
+    get.byte ; INT
+    put.next.byte ; BYTE
+    stop
+:
+
+
+INLINE PROC eeprom.write (VAL BYTE me, VAL INT addr, VAL BYTE b)
+  twi.write (me, TWI.ADDR.16, addr, b)
+:
+
+INLINE PROC eeprom.read (VAL BYTE me, VAL INT addr, RESULT BYTE b)
+  twi.read (me, TWI.ADDR.16, addr, b)
+:
+
+PROC eeprom.get.pointer (VAL BYTE me, RESULT INT addr)
+  BYTE b:
+  SEQ
+    eeprom.read (me, #00, b)
+    addr := (INT b) << 8
+    eeprom.read (me, #01, b)
+    addr := (addr BITOR (INT b))
+:
+
+PROC eeprom.set.pointer (VAL BYTE me, VAL INT addr)
+  INT loc:
+  SEQ
+    IF
+      addr < 2
+        loc := 2
+      TRUE
+        loc := addr
+    eeprom.write (me, #00, (BYTE (loc >> 8)))
+    eeprom.write (me, #01, (BYTE (loc BITAND #FF)))
+:
+
+PROC eeprom.24LC256 (CHAN EEPROM e?, CHAN BYTE resp!)
+  -- The default address for this device is #50
+  INITIAL BYTE me IS #50:
+  INITIAL BOOL DONE IS FALSE:
+  WHILE NOT DONE
+    e ? CASE
+
+      -- This case could check that it is a valid value.
+      device.addr ; me
+        SKIP 
+
+      -- App-specific. I want a way to keep an address
+      -- at locations 0,1. Resetting points at location #02.
+      reset.pointer 
+        eeprom.set.pointer(me, 2)
+      
+      get.pointer
+        SEQ i = 0 FOR 2
+          BYTE b:
+          SEQ
+            eeprom.read (me, i, b)
+            resp ! b
+
+      dereference.pointer
+        BYTE msb, lsb, b:
+        INT addr:
+        SEQ
+          eeprom.read (me, 0, msb)
+          eeprom.read (me, 1, lsb)
+          addr := ((INT msb) << 8) BITOR (INT lsb)
+          eeprom.read (me, addr, b)
+          resp ! b
+
+      INT addr:
+      BYTE b:
+      put.byte ; addr ; b
+        eeprom.write  (me, addr, b)
+
+      INT addr:
+      get.byte ; addr
+        BYTE b:
+        SEQ
+          eeprom.read (me, addr, b)
+          resp ! b
+
+      BYTE b:
+      put.next.byte ; b
+        INT addr:
+        SEQ
+          eeprom.get.pointer (me, addr)
+          eeprom.write (me, addr, b)
+          eeprom.set.pointer (me, addr + 1)
+
+      stop
+        SEQ
+          DONE := TRUE
+          serial.write.string (TX0, "*nSTOPPED.*n")
+:
+
+#ENDIF

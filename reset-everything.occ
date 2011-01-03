@@ -1,0 +1,38 @@
+#INCLUDE "plumbing.module"
+#INCLUDE "eeprom.24LC256.module"
+#INCLUDE "twi3.module"
+
+
+INLINE PROC clock.write (VAL INT addr, VAL BYTE b)
+  twi.write (#68, TWI.ADDR.8, addr, b)
+:
+
+PROC init.EEPROM.addr ()
+  SEQ
+    serial.write.string (TX0, "EEPROM... ")
+    -- Use #00, #01 as the address storage.
+    -- Data should begin at #0002.
+    eeprom.write (#50, #00, #00) -- MSB
+    eeprom.write (#50, #01, #02) -- LSB
+    serial.write.string (TX0, "reset.*n")
+:
+
+--{{{ PROC zero.clock (VAL BOOL reset)
+-- Zeros the clock module. "Sets the time", if you prefer.
+PROC zero.clock ()
+  SEQ
+    SEQ i = 0 FOR 3
+      clock.write (i, #00)
+    serial.write.string (TX0, "Clock reset.*n")
+:
+--}}}
+
+PROC main ()
+  SEQ
+    serial.setup (TX0, 57600)
+    zero.clock ()
+    init.EEPROM.addr ()
+    serial.write.string (TX0, "Done.")
+    delay (500)
+    STOP
+:
