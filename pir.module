@@ -10,44 +10,16 @@
 -- It may be easily generalized into a "generic PIR"
 -- interface, but that is not the project for today.
 
---{{{ PROC debounce
---* Debounce a channel.
--- Debounces a channel of SIGNALs. Specifically, if 
--- multiple values come in within the debounce.time
--- only the first value is passed through.
---
--- @param debounce.time The time to debounce over.
--- @param in The incoming LEVEL values
--- @param out The outgoing LEVEL values, debounced
-PROC debounce.signal (VAL INT debounce.time, CHAN SIGNAL in?, out!)
-  WHILE TRUE
-    TIMER tim:
-    INT t:
-    SEQ
-      in ? SIGNAL
-      tim ? t
-      t := t PLUS debounce.time
-      INITIAL BOOL ignoring IS TRUE:
-      WHILE ignoring
-        ALT
-          in ? SIGNAL
-            SKIP
-          tim ? AFTER t
-            ignoring := FALSE
-      out ! SIGNAL
-:
---}}}
-
 PROC pir (VAL INT power.pin, sense.pin, CHAN SIGNAL motion!)
   SEQ
-    -- serial.write.string (TX0, "Powering down.*n")
+    serial.write.string (TX0, "Powering down.*n")
     digital.mode (power.pin, OUTPUT)
     digital.write (power.pin, LOW)
-    delay (1000)
+    delay (2000)
     -- serial.write.string (TX0, "Powering up.*n")
     digital.write (power.pin, HIGH)
     -- serial.write.string (TX0, "Stabilizing.*n")
-    delay (5000)
+    delay (6000)
     -- serial.write.string (TX0, "Sensing.*n")
     CHAN LEVEL pir:
     PAR
