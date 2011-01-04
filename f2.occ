@@ -14,6 +14,7 @@ INLINE PROC clock.read.many (VAL INT addr, RESULT []BYTE bs)
   twi.read.many (#68, TWI.ADDR.8, #00, bs)
 :
 
+VAL []BYTE MASKS IS [#F0, #F0, #30]:
 PROC current.time (CHAN SIGNAL s!, CHAN [3]BYTE reading!)
   [3]BYTE hms:
   [3]BYTE b:
@@ -21,9 +22,8 @@ PROC current.time (CHAN SIGNAL s!, CHAN [3]BYTE reading!)
   WHILE TRUE
     SEQ
       clock.read.many (#00, b)
-      hms[0] := (((b[0] BITAND #F0) >> 4) * 10) + (b[0] BITAND #0F)
-      hms[1] := (((b[1] BITAND #F0) >> 4) * 10) + (b[1] BITAND #0F)
-      hms[2] := (((b[2] BITAND #30) >> 4) * 10) + (b[2] BITAND #0F)
+      SEQ i = 0 FOR 3
+        hms[i] := (((b[i] BITAND MASKS[i]) >> 4) * 10) + (b[i] BITAND #0F)
       reading ! hms
       s ! SIGNAL
 :
@@ -132,6 +132,20 @@ PROC display.last.n.readings (VAL INT n)
       e ! stop
 :
 
+-- Data Storage
+-- If we're going to store this in the EEPROM, we have to go bytewise.
+-- TAG : H : M : S : LIGHT : TEMP
+-- Width: 6 bytes
+-- TAG is either M or T (Motion or Time).
+-- -- The Motion tag is if the motion sensor went off.
+-- -- -- Limit one per minute on motion sensor?
+-- -- The Time tag is if it was a regularly scheduled reading.
+-- H, M, S are the timestamp.
+-- LIGHT is the light level (0 - 512); we'll do half intensity.
+-- TEMP is in degrees C (so should always be less than 255)
+--
+-- Can collect around 5400 data points on the 32K EEPROM this way.
+
 PROC main ()
   SEQ
     serial.setup (TX0, 57600)
@@ -154,40 +168,21 @@ PROC main ()
       display (time?, light?, temp.current?, temp.prev?)
 :      
 
-PROC test.pir ()
+#INCLUDE "pir.module"
+PROC pir.test ()
+  CHAN LEVEL motion:
+  LEVEL lvl:
+  INITIAL INT avr.pin IS board.to.chip(3):
   SEQ
-    serial.write.string (TX0, "Powering down.*n")
-    digital.mode (5, OUTPUT)
-    digital.write (5, LOW)
+    serial.write.int (TX0, avr.pin)
+    serial.write.newline(TX0)
     digital.mode (3, INPUT)
-    digital.write (3, LOW)
-    delay (1000)
-    serial.write.string (TX0, "Powering up.*n")
-    digital.write (5, HIGH)
-    serial.write.string (TX0, "Stabilizing.*n")
-    delay (5000)
-    serial.write.string (TX0, "Sensing.*n")
-    TIMER tim:
-    INT s, e:
-    INITIAL BOOL MOTION IS FALSE:
-    WHILE TRUE
-      LEVEL l:
-      SEQ
-        digital.read (3, l)
-        IF
-          (l = HIGH) AND (NOT MOTION)
-            SEQ
-              tim ? s
-              MOTION := TRUE
-              digital.write (13, l)
-          (l = LOW) AND MOTION
-            SEQ
-              tim ? e
-              MOTION := FALSE
-              digital.write (13, l)
-              serial.write.string (TX0, "[ ")
-              serial.write.int    (TX0, e MINUS s)
-              serial.write.string (TX0, " ]*n")
-          TRUE
-            SKIP
+    digital.mode (13, OUTPUT)
+    PAR
+      pir (5, 3, motion!)
+      WHILE TRUE
+        SEQ
+          motion ? lvl
+          digital.write (13, lvl)
+          serial.write.string (TX0, "Motion!")
 :
