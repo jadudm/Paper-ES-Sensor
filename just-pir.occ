@@ -1,0 +1,15 @@
+#INCLUDE "pir.module"
+
+VAL INT PIR.PIN IS 2:
+PROC pir.test ()
+  CHAN LEVEL motion:
+  LEVEL lvl:
+  SEQ
+    digital.mode (13, OUTPUT)
+    PAR
+      pir (5, PIR.PIN, motion!)
+      WHILE TRUE
+        SEQ
+          motion ? lvl
+          serial.write.string (TX0, "Motion!*n")
+:

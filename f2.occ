@@ -169,20 +169,13 @@ PROC main ()
 :      
 
 #INCLUDE "pir.module"
+VAL INT PIR.PIN IS 2:
 PROC pir.test ()
-  CHAN LEVEL motion:
-  LEVEL lvl:
-  INITIAL INT avr.pin IS board.to.chip(3):
-  SEQ
-    serial.write.int (TX0, avr.pin)
-    serial.write.newline(TX0)
-    digital.mode (3, INPUT)
-    digital.mode (13, OUTPUT)
-    PAR
-      pir (5, 3, motion!)
-      WHILE TRUE
-        SEQ
-          motion ? lvl
-          digital.write (13, lvl)
-          serial.write.string (TX0, "Motion!")
+  CHAN SIGNAL motion:
+  PAR
+    pir (5, PIR.PIN, motion!)
+    WHILE TRUE
+      SEQ
+        motion ? SIGNAL 
+        serial.write.string (TX0, "Motion!*n")
 :

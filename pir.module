@@ -38,19 +38,21 @@ PROC debounce.signal (VAL INT debounce.time, CHAN SIGNAL in?, out!)
 :
 --}}}
 
-PROC pir (VAL INT power.pin, sense.pin, CHAN LEVEL motion!)
-  INT PIR, pir.time:
+PROC pir (VAL INT power.pin, sense.pin, CHAN SIGNAL motion!)
   SEQ
-    serial.write.string (TX0, "Powering down.*n")
+    -- serial.write.string (TX0, "Powering down.*n")
     digital.mode (power.pin, OUTPUT)
     digital.write (power.pin, LOW)
-    delay (2000)
-    serial.write.string (TX0, "Powering up.*n")
+    delay (1000)
+    -- serial.write.string (TX0, "Powering up.*n")
     digital.write (power.pin, HIGH)
-    serial.write.string (TX0, "Stabilizing.*n")
+    -- serial.write.string (TX0, "Stabilizing.*n")
     delay (5000)
-    serial.write.string (TX0, "Sensing.*n")
-    digital.input (sense.pin, motion!)
+    -- serial.write.string (TX0, "Sensing.*n")
+    CHAN LEVEL pir:
+    PAR
+      digital.input (sense.pin, pir!)
+      level.to.signal (pir?, motion!)
 :
 
 #ENDIF
