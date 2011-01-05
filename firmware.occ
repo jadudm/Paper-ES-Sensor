@@ -253,18 +253,25 @@ PROC get.data (CHAN READING data.in?, data.out!)
         data.out ! r
 :
 
+PROC serial.write.comma (VAL INT port)
+  serial.write.string (port, ",")
+:
+
 PROC display (CHAN READING data?)
   WHILE TRUE
     READING r:
     SEQ
       data ? r
-      serial.write.time   (TX0, [(INT r[hours]), (INT r[minutes]), 0])
-      serial.write.string (TX0, [r[type]])
-      serial.write.string (TX0, ": L[")
-      serial.write.int    (TX0, r[light])
-      serial.write.string (TX0, "] T[")
-      serial.write.int    (TX0, r[temp])
-      serial.write.string (TX0, "]*n")
+      serial.write.int     (TX0, (INT r[hours]))
+      serial.write.comma   (TX0)
+      serial.write.int     (TX0, (INT r[minutes]))
+      serial.write.comma   (TX0)
+      serial.write.string  (TX0, [r[type]])
+      serial.write.comma   (TX0)
+      serial.write.int     (TX0, r[light])
+      serial.write.comma   (TX0)
+      serial.write.int     (TX0, r[temp])
+      serial.write.newline (TX0)
 :
 
 PROC main ()
