@@ -60,24 +60,6 @@ PROC serial.write.dec.int (VAL INT port, VAL INT n)
             index := index + 1
 :
 
-PROC serial.write.time (VAL INT port, VAL [3]INT hms)
-  SEQ i = 0 FOR 3
-    SEQ
-      IF
-        hms[i] = 0
-          serial.write.string (port, "00")
-        hms[i] < 10
-          serial.write.string (port, "0")
-        TRUE
-          SKIP
-      serial.write.dec.int (port, hms[i])
-      IF
-        i <> 2
-          serial.write.string (port, ":")
-        TRUE
-          SKIP
-:
-
 PROC bogo.clock (CHAN SIGNAL tick!, CHAN TIME hm!)
   [3]INT hms:
   WHILE TRUE
@@ -139,7 +121,7 @@ PROC n.minute.ticker (VAL INT num.minutes, CHAN SIGNAL in?, out!)
 -- Pin 2 is used to monitor the sensor.
 -- A signal is generated on the channel 's'
 -- whenever motion is detected.
-PROC motion (CHAN SIGNAL s!)
+INLINE PROC motion (CHAN SIGNAL s!)
   pir (5, 2, s!)
 :
 --}}}
