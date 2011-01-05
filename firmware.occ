@@ -12,21 +12,41 @@ VAL BYTE MOTION.READING IS 'M':
 
 DATA TYPE READING
   RECORD
+    BYTE hours:
+    BYTE minutes:
     BYTE type:
     INT  temp:
     INT  light:
 :
 
---{{{ PROC motion (SIGNAL s!)
--- Monitors the Modern Device PIR sensor.
--- Pin 5 is used to power the sensor.
--- Pin 2 is used to monitor the sensor.
--- A signal is generated on the channel 's'
--- whenever motion is detected.
-PROC motion (CHAN SIGNAL s!)
-  pir (5, 2, s!)
+PROTOCOL TIME IS BYTE ; BYTE:
+
+PROC bogo.clock (CHAN SIGNAL tick!, CHAN TIME hm!)
+  WHILE TRUE
+    SEQ
+      delay (2000)
+      hm ! 12 ; 42
+      tick ! SIGNAL
 :
---}}}
+
+PROC current.time (CHAN SIGNAL req?, CHAN TIME update?, recent!)
+  INITIAL BYTE hours, minutes IS 0, 0:
+  WHILE TRUE
+    ALT
+      update ? hours ; minutes
+        SKIP
+      req ? SIGNAL
+        recent ! hours ; minutes
+:
+ 
+PROC signal.delta (CHAN SIGNAL in?, o1!, o2!)
+  WHILE TRUE
+    SEQ
+      in ? SIGNAL
+      PAR
+        o1 ! SIGNAL
+        o2 ! SIGNAL
+:
 
 --{{{ PROC n.minute.ticker (VAL INT minutes, CHAN SIGNAL in?, out!)
 -- Expects a SIGNAL on the channel 'in' every minute.
@@ -45,6 +65,17 @@ PROC n.minute.ticker (VAL INT num.minutes, CHAN SIGNAL in?, out!)
             out ! SIGNAL
             counter := num.minutes
 :
+
+--{{{ PROC motion (SIGNAL s!)
+-- Monitors the Modern Device PIR sensor.
+-- Pin 5 is used to power the sensor.
+-- Pin 2 is used to monitor the sensor.
+-- A signal is generated on the channel 's'
+-- whenever motion is detected.
+PROC motion (CHAN SIGNAL s!)
+  pir (5, 2, s!)
+:
+--}}}
 
 PROC motion.throttle (CHAN SIGNAL motion?, reset?, out!)
   INITIAL BOOL IGNORING IS FALSE:
@@ -125,11 +156,17 @@ PROC do.reading (CHAN SIGNAL init?, motion?, clock?,
         out ! r
 :
 
-PROC display (CHAN READING data?)
+PROC display (CHAN READING data?, CHAN SIGNAL time.req!, CHAN TIME time.resp?)
   WHILE TRUE
     READING r:
     SEQ
       data ? r
+      time.req ! SIGNAL
+      time.resp ? r[hours] ; r[minutes]
+      serial.write.int    (TX0, (INT r[hours]))
+      serial.write.string (TX0, ":")
+      serial.write.int    (TX0, (INT r[minutes]))
+      serial.write.string (TX0, " :")
       serial.write.string (TX0, [r[type]])
       serial.write.string (TX0, ": L[")
       serial.write.int    (TX0, r[light])
@@ -138,29 +175,16 @@ PROC display (CHAN READING data?)
       serial.write.string (TX0, "]*n")
 :
 
-PROC signal.delta (CHAN SIGNAL in?, o1!, o2!)
-  WHILE TRUE
-    SEQ
-      in ? SIGNAL
-      PAR
-        o1 ! SIGNAL
-        o2 ! SIGNAL
-:
-
-PROC bogo.clock (CHAN SIGNAL s!)
-  WHILE TRUE
-    SEQ
-      delay (2000)
-      s ! SIGNAL
-:
-
 PROC main ()
-  CHAN SIGNAL tick, motion.tick, clock.tick:
+  CHAN SIGNAL tick, motion.tick, clock.tick, time.req:
   CHAN SIGNAL read.init, read.clock:
   CHAN SIGNAL movement, motion.ok, read.movement:
   CHAN READING data:
+  CHAN TIME real.time, time.resp:
   PAR
-    bogo.clock (tick!) 
+    bogo.clock (tick!, real.time!) 
+    current.time (time.req?, real.time?, time.resp!)
+
     signal.delta (tick?, motion.tick!, clock.tick!)
     n.minute.ticker (5, motion.tick?, motion.ok!)
     n.minute.ticker (10, clock.tick?, read.clock!)
@@ -172,6 +196,6 @@ PROC main ()
     
     do.reading (read.init?, read.movement?, read.clock?, data!)
     
-    display (data?)
+    display (data?, time.req!, time.resp?)
     
 :
