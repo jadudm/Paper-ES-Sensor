@@ -128,8 +128,49 @@ PROC init.reading (CHAN SIGNAL s!)
   s ! SIGNAL
 :
 
-PROC do.reading (CHAN SIGNAL init?, motion?, clock?,
-                 CHAN READING out!)
+-- Generate initial packets continuously.
+PROC init.packet (CHAN READING out!)
+  WHILE TRUE
+    READING r:
+    SEQ
+      r[hours]   := 0
+      r[minutes] := 0
+      r[type]    := 'X'
+      r[light]   := 0
+      r[temp]    := 0
+      out ! r
+:
+
+PROC get.type (CHAN READING data.in?, data.out!,
+               CHAN SIGNAL init?, motion?, clock?)
+  WHILE TRUE
+    READING r:
+    SEQ
+      -- Grab the packet
+      data.in ? r
+      -- Who asked for a reading?
+      ALT
+        init ? SIGNAL
+          r[type] := INIT.READING
+        motion ? SIGNAL
+          r[type] := MOTION.READING
+        clock ? SIGNAL
+          r[type] := CLOCK.READING
+      data.out ! r
+:
+
+PROC get.time (CHAN READING data.in?, data.out!,
+               CHAN SIGNAL time.req!, CHAN TIME time.resp?)
+  WHILE TRUE
+    READING r:
+    SEQ
+      data.in ? r
+      time.req ! SIGNAL
+      time.resp ? r[hours] ; r[minutes]
+      data.out ! r
+:
+
+PROC get.data (CHAN READING data.in?, data.out!)
   CHAN SIGNAL light.req, temp.req:
   CHAN INT light.resp, temp.resp:
   PAR
@@ -138,14 +179,7 @@ PROC do.reading (CHAN SIGNAL init?, motion?, clock?,
     WHILE TRUE
       READING r:
       SEQ
-        -- Who asked for a reading?
-        ALT
-          init ? SIGNAL
-            r[type] := INIT.READING
-          motion ? SIGNAL
-            r[type] := MOTION.READING
-          clock ? SIGNAL
-            r[type] := CLOCK.READING
+        data.in ? r
         -- Get the light level
         light.req ! SIGNAL
         light.resp ? r[light]
@@ -153,16 +187,14 @@ PROC do.reading (CHAN SIGNAL init?, motion?, clock?,
         temp.req  ! SIGNAL
         temp.resp  ? r[temp]
         -- Send the data out
-        out ! r
+        data.out ! r
 :
 
-PROC display (CHAN READING data?, CHAN SIGNAL time.req!, CHAN TIME time.resp?)
+PROC display (CHAN READING data?)
   WHILE TRUE
     READING r:
     SEQ
       data ? r
-      time.req ! SIGNAL
-      time.resp ? r[hours] ; r[minutes]
       serial.write.int    (TX0, (INT r[hours]))
       serial.write.string (TX0, ":")
       serial.write.int    (TX0, (INT r[minutes]))
@@ -179,11 +211,16 @@ PROC main ()
   CHAN SIGNAL tick, motion.tick, clock.tick, time.req:
   CHAN SIGNAL read.init, read.clock:
   CHAN SIGNAL movement, motion.ok, read.movement:
-  CHAN READING data:
+  CHAN READING a, b, c, d:
   CHAN TIME real.time, time.resp:
   PAR
     bogo.clock (tick!, real.time!) 
     current.time (time.req?, real.time?, time.resp!)
+
+    init.packet (a!)
+    get.type (a?, b!, read.init?, read.movement?, read.clock?)
+    get.time (b?, c!, time.req!, time.resp?)
+    get.data (c?, d!)
 
     signal.delta (tick?, motion.tick!, clock.tick!)
     n.minute.ticker (5, motion.tick?, motion.ok!)
@@ -194,8 +231,6 @@ PROC main ()
     motion (movement!)
     motion.throttle (movement?, motion.ok?, read.movement!)
     
-    do.reading (read.init?, read.movement?, read.clock?, data!)
-    
-    display (data?, time.req!, time.resp?)
+    display (d?)
     
 :
