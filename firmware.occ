@@ -26,34 +26,38 @@ PROC serial.write.dec.int (VAL INT port, VAL INT n)
   INITIAL INT index IS 0:
   INITIAL INT number IS n:
   INITIAL BOOL neg IS FALSE:
-  SEQ
-    IF
-      n < 0
-        SEQ
-          neg := TRUE
-          number := n * (- 1)
-      TRUE
-        SKIP
-    IF 
-      neg 
-        serial.write.string (port, "-")
-      TRUE 
-        SKIP
-    INITIAL BOOL LEADING IS TRUE:
-    WHILE (index < 5)
-      INT digit:
+  IF
+    n = 0
+      serial.write.string (port, "0")
+    TRUE
       SEQ
-        digit := number / dec.powers[index]
-        number := number REM dec.powers[index]
         IF
-          LEADING AND (digit = 0)
-            SKIP 
-          (digit <> 0) OR (NOT LEADING) 
+          n < 0
             SEQ
-              LEADING := FALSE
-              digit := digit + (INT '0')
-              serial.write.byte(port, (BYTE digit))
-        index := index + 1
+              neg := TRUE
+              number := n * (- 1)
+          TRUE
+            SKIP
+        IF 
+          neg 
+            serial.write.string (port, "-")
+          TRUE 
+            SKIP
+        INITIAL BOOL LEADING IS TRUE:
+        WHILE (index < 5)
+          INT digit:
+          SEQ
+            digit := number / dec.powers[index]
+            number := number REM dec.powers[index]
+            IF
+              LEADING AND (digit = 0)
+                SKIP 
+              (digit <> 0) OR (NOT LEADING) 
+                SEQ
+                  LEADING := FALSE
+                  digit := digit + (INT '0')
+                  serial.write.byte(port, (BYTE digit))
+            index := index + 1
 :
 
 PROC serial.write.time (VAL INT port, VAL [3]INT hms)
@@ -262,15 +266,15 @@ PROC display (CHAN READING data?)
     READING r:
     SEQ
       data ? r
-      serial.write.int     (TX0, (INT r[hours]))
+      serial.write.dec.int (TX0, (INT r[hours]))
       serial.write.comma   (TX0)
-      serial.write.int     (TX0, (INT r[minutes]))
+      serial.write.dec.int (TX0, (INT r[minutes]))
       serial.write.comma   (TX0)
       serial.write.string  (TX0, [r[type]])
       serial.write.comma   (TX0)
-      serial.write.int     (TX0, r[light])
+      serial.write.dec.int (TX0, r[light])
       serial.write.comma   (TX0)
-      serial.write.int     (TX0, r[temp])
+      serial.write.dec.int (TX0, r[temp])
       serial.write.newline (TX0)
 :
 
