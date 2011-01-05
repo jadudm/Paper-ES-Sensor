@@ -20,7 +20,59 @@ DATA TYPE READING
     INT  light:
 :
 
-PROTOCOL TIME IS BYTE ; BYTE ; BYTE:
+PROTOCOL TIME IS BYTE ; BYTE:
+
+PROC serial.write.dec.int (VAL INT port, VAL INT n)
+  INITIAL INT index IS 0:
+  INITIAL INT number IS n:
+  INITIAL BOOL neg IS FALSE:
+  SEQ
+    IF
+      n < 0
+        SEQ
+          neg := TRUE
+          number := n * (- 1)
+      TRUE
+        SKIP
+    IF 
+      neg 
+        serial.write.string (port, "-")
+      TRUE 
+        SKIP
+    INITIAL BOOL LEADING IS TRUE:
+    WHILE (index < 5)
+      INT digit:
+      SEQ
+        digit := number / dec.powers[index]
+        number := number REM dec.powers[index]
+        IF
+          LEADING AND (digit = 0)
+            SKIP 
+          (digit <> 0) OR (NOT LEADING) 
+            SEQ
+              LEADING := FALSE
+              digit := digit + (INT '0')
+              serial.write.byte(port, (BYTE digit))
+        index := index + 1
+:
+
+PROC serial.write.time (VAL INT port, VAL [3]INT hms)
+  SEQ i = 0 FOR 3
+    SEQ
+      IF
+        hms[i] = 0
+          serial.write.string (port, "00")
+        hms[i] < 10
+          serial.write.string (port, "0")
+        TRUE
+          SKIP
+      serial.write.dec.int (port, hms[i])
+      IF
+        i <> 2
+          serial.write.string (port, ":")
+        TRUE
+          SKIP
+:
 
 PROC bogo.clock (CHAN SIGNAL tick!, CHAN TIME hm!)
   [3]INT hms:
@@ -29,25 +81,25 @@ PROC bogo.clock (CHAN SIGNAL tick!, CHAN TIME hm!)
       delay (2000)
       chronodot.get.time(hms)
       #PRAGMA DEFINED hms
-      hm ! (BYTE hms[0]) ; (BYTE hms[1]) ; (BYTE hms[2])
+      hm ! (BYTE hms[0]) ; (BYTE hms[1])
       tick ! SIGNAL
 :
 
 PROC current.time (CHAN SIGNAL req?, CHAN TIME update?, recent!)
   INITIAL BOOL READY IS FALSE:
-  INITIAL BYTE hours, minutes, seconds IS 0, 0, 0:
+  INITIAL BYTE hours, minutes IS 0, 0:
   WHILE TRUE
     ALT
-      update ? hours ; minutes ; seconds
+      update ? hours ; minutes
         SKIP  
       -- On the first read, make sure we wait.
       NOT READY & req ? SIGNAL
         SEQ
-          update ? hours ; minutes ; seconds
-          recent ! hours ; minutes ; seconds
+          update ? hours ; minutes
+          recent ! hours ; minutes
           READY := TRUE
       req ? SIGNAL
-        recent ! hours ; minutes ; seconds
+        recent ! hours ; minutes 
 :
  
 PROC signal.delta (CHAN SIGNAL in?, o1!, o2!)
@@ -106,7 +158,7 @@ PROC motion.throttle (CHAN SIGNAL motion?, reset?, out!)
       -- We must be ignoring the motion sensor, so read in the 
       -- SIGNAL and then do nothing.
       IGNORING & motion ? SIGNAL
-        serial.write.string (TX0, "IGNORED MOTION*n")        
+        SKIP
 :
 
 PROC light.sensor (CHAN SIGNAL req?, CHAN INT resp!)
@@ -177,8 +229,7 @@ PROC get.time (CHAN READING data.in?, data.out!,
     SEQ
       data.in ? r
       time.req ! SIGNAL
-      BYTE seconds:
-      time.resp ? r[hours] ; r[minutes] ; seconds
+      time.resp ? r[hours] ; r[minutes]
       data.out ! r
 :
 
@@ -207,10 +258,7 @@ PROC display (CHAN READING data?)
     READING r:
     SEQ
       data ? r
-      serial.write.int    (TX0, (INT r[hours]))
-      serial.write.string (TX0, ":")
-      serial.write.int    (TX0, (INT r[minutes]))
-      serial.write.string (TX0, " :")
+      serial.write.time   (TX0, [(INT r[hours]), (INT r[minutes]), 0])
       serial.write.string (TX0, [r[type]])
       serial.write.string (TX0, ": L[")
       serial.write.int    (TX0, r[light])
