@@ -1,0 +1,55 @@
+--** occam-pi/Plumbing interface to the Chronodot
+-- @module chronodot
+
+#IF NOT (DEFINED (CHRONODOT.MODULE))
+#DEFINE CHRONODOT.MODULE
+#INCLUDE "twi3.module"
+
+INLINE PROC chronodot.write (VAL INT addr, VAL BYTE b)
+  twi.write (#68, TWI.ADDR.8, addr, b)
+:
+
+INLINE PROC chronodot.read (VAL INT addr, RESULT BYTE b)
+  twi.read (#68, TWI.ADDR.8, addr, b)
+:
+
+INLINE PROC chronodot.write.many (VAL INT addr, []BYTE bs)
+  #PRAGMA DEFINED bs
+  twi.write.many (#68, TWI.ADDR.8, addr, bs)
+:
+
+INLINE PROC chronodot.read.many (VAL INT addr, RESULT []BYTE bs)
+  #PRAGMA DEFINED bs
+  twi.read.many (#68, TWI.ADDR.8, addr, bs)
+:
+
+
+VAL []INT MASKS IS [#F0, #F0, #30]:
+PROC chronodot.get.time (RESULT [3]INT hms)
+  [3]BYTE  b:
+  #PRAGMA DEFINED b
+  SEQ
+    chronodot.read.many (#00, b)
+    SEQ i = 2 FOR 3 STEP -1
+      hms[2 - i] := ((((INT b[i]) BITAND MASKS[i]) >> 4) * 10) + ((INT b[i]) BITAND #0F)
+:
+
+BYTE FUNCTION to.bcd (VAL BYTE n)
+  BYTE ts, os:
+  VALOF 
+    SEQ
+      ts := n / 10
+      os := n - (ts * 10)
+    RESULT (ts << 4) + os
+:
+      
+PROC chronodot.set.time (VAL [3]INT hms)
+  [3]BYTE bcd.smh:
+  SEQ
+    -- Convert, and reverse the order.
+    SEQ i = 0 FOR 3
+      bcd.smh[2 - i] := to.bcd((BYTE hms[i]))
+    chronodot.write.many (#00, bcd.smh) 
+:
+
+#ENDIF

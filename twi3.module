@@ -243,7 +243,27 @@ PROC twi.read (VAL BYTE dev, VAL INT addr.size, VAL INT addr, RESULT BYTE b)
     twi.stop()
 :
 
+PROC twi.write.many (VAL BYTE dev, VAL INT addr.size, VAL INT addr, VAL []BYTE b)
+  SEQ
+    twi.init() 
+    twi.start()
+    twi.set.tx.addr((dev << 1))
+    IF
+      addr.size = TWI.ADDR.8
+        twi.tx(BYTE addr)
+      addr.size = TWI.ADDR.16
+        SEQ
+          twi.tx((BYTE (addr >> 8)))
+          twi.tx((BYTE (addr BITAND #FF)))
+      TRUE
+        SKIP
+    SEQ i = 0 FOR (SIZE b)
+      twi.tx(b[i])
+    twi.stop()
+:    
+
 PROC twi.read.many (VAL BYTE dev, VAL INT addr.size, VAL INT addr, RESULT []BYTE bs)
+  #PRAGMA DEFINED bs
   SEQ
     twi.init()
     twi.start()

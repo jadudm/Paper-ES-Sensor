@@ -2,6 +2,7 @@
 #INCLUDE "eeprom.24LC256.module"
 #INCLUDE "twi3.module"
 #INCLUDE "pir.module"
+#INCLUDE "chronodot.module"
 
 VAL INT TEMP.SENSOR.PIN IS A1:
 VAL INT LIGHT.SENSOR.PIN IS A0:
@@ -19,24 +20,34 @@ DATA TYPE READING
     INT  light:
 :
 
-PROTOCOL TIME IS BYTE ; BYTE:
+PROTOCOL TIME IS BYTE ; BYTE ; BYTE:
 
 PROC bogo.clock (CHAN SIGNAL tick!, CHAN TIME hm!)
+  [3]INT hms:
   WHILE TRUE
     SEQ
       delay (2000)
-      hm ! 12 ; 42
+      chronodot.get.time(hms)
+      #PRAGMA DEFINED hms
+      hm ! (BYTE hms[0]) ; (BYTE hms[1]) ; (BYTE hms[2])
       tick ! SIGNAL
 :
 
 PROC current.time (CHAN SIGNAL req?, CHAN TIME update?, recent!)
-  INITIAL BYTE hours, minutes IS 0, 0:
+  INITIAL BOOL READY IS FALSE:
+  INITIAL BYTE hours, minutes, seconds IS 0, 0, 0:
   WHILE TRUE
     ALT
-      update ? hours ; minutes
-        SKIP
+      update ? hours ; minutes ; seconds
+        SKIP  
+      -- On the first read, make sure we wait.
+      NOT READY & req ? SIGNAL
+        SEQ
+          update ? hours ; minutes ; seconds
+          recent ! hours ; minutes ; seconds
+          READY := TRUE
       req ? SIGNAL
-        recent ! hours ; minutes
+        recent ! hours ; minutes ; seconds
 :
  
 PROC signal.delta (CHAN SIGNAL in?, o1!, o2!)
@@ -166,7 +177,8 @@ PROC get.time (CHAN READING data.in?, data.out!,
     SEQ
       data.in ? r
       time.req ! SIGNAL
-      time.resp ? r[hours] ; r[minutes]
+      BYTE seconds:
+      time.resp ? r[hours] ; r[minutes] ; seconds
       data.out ! r
 :
 
@@ -212,10 +224,10 @@ PROC main ()
   CHAN SIGNAL read.init, read.clock:
   CHAN SIGNAL movement, motion.ok, read.movement:
   CHAN READING a, b, c, d:
-  CHAN TIME real.time, time.resp:
+  CHAN TIME hms, time.resp:
   PAR
-    bogo.clock (tick!, real.time!) 
-    current.time (time.req?, real.time?, time.resp!)
+    bogo.clock (tick!, hms!) 
+    current.time (time.req?, hms?, time.resp!)
 
     init.packet (a!)
     get.type (a?, b!, read.init?, read.movement?, read.clock?)

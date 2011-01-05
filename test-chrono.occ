@@ -1,0 +1,66 @@
+#INCLUDE "plumbing.module"
+#INCLUDE "chronodot.module"
+
+VAL []INT powers IS [10000, 1000, 100, 10, 1]:
+PROC serial.write.dec.int (VAL INT port, VAL INT n)
+  INITIAL INT index IS 0:
+  INITIAL INT number IS n:
+  INITIAL BOOL neg IS FALSE:
+  SEQ
+    IF
+      n < 0
+        SEQ
+          neg := TRUE
+          number := n * (- 1)
+      TRUE
+        SKIP
+    IF 
+      neg 
+        serial.write.string (port, "-")
+      TRUE 
+        SKIP
+    INITIAL BOOL LEADING IS TRUE:
+    WHILE (index < 5)
+      INT digit:
+      SEQ
+        digit := number / powers[index]
+        number := number REM powers[index]
+        IF
+          LEADING AND (digit = 0)
+            SKIP 
+          (digit <> 0) OR (NOT LEADING) 
+            SEQ
+              LEADING := FALSE
+              digit := digit + (INT '0')
+              serial.write.byte(port, (BYTE digit))
+        index := index + 1
+    
+:
+
+PROC main ()
+  SEQ
+    INITIAL [3]INT hms IS [23, 59, 30]:
+    chronodot.set.time (hms)
+    WHILE TRUE
+      [3]INT hms:
+      SEQ
+        chronodot.get.time(hms)
+        SEQ i = 0 FOR 3
+          SEQ
+            IF
+              hms[i] = 0
+                serial.write.string (TX0, "00")
+              hms[i] < 10
+                serial.write.string (TX0, "0")
+              TRUE
+                SKIP
+            serial.write.dec.int (TX0, hms[i])
+            IF
+              i <> 2
+                serial.write.string (TX0, ":")
+              TRUE
+                SKIP
+        serial.write.newline (TX0)
+:
+        
+  
