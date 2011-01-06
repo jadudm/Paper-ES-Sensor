@@ -13,7 +13,7 @@ INLINE PROC chronodot.read (VAL INT addr, RESULT BYTE b)
   twi.read (#68, TWI.ADDR.8, addr, b)
 :
 
-INLINE PROC chronodot.write.many (VAL INT addr, []BYTE bs)
+INLINE PROC chronodot.write.many (VAL INT addr, VAL []BYTE bs)
   #PRAGMA DEFINED bs
   twi.write.many (#68, TWI.ADDR.8, addr, bs)
 :

@@ -6,10 +6,15 @@
 
 VAL INT TEMP.SENSOR.PIN IS A1:
 VAL INT LIGHT.SENSOR.PIN IS A0:
+VAL INT PIR.POWER IS 5:
+VAL INT PIR.SENSE IS 2:
 
 VAL BYTE INIT.READING   IS 'I':
 VAL BYTE CLOCK.READING  IS 'C':
 VAL BYTE MOTION.READING IS 'M':
+
+VAL INT LOG.TX IS TX0:
+VAL INT LOG.PORT IS 0:
 
 DATA TYPE READING
   RECORD
@@ -64,11 +69,27 @@ PROC bogo.clock (CHAN SIGNAL tick!, CHAN TIME hm!)
   [3]INT hms:
   WHILE TRUE
     SEQ
-      delay (2000)
+      delay (500)
       chronodot.get.time(hms)
       #PRAGMA DEFINED hms
       hm ! (BYTE hms[0]) ; (BYTE hms[1])
       tick ! SIGNAL
+:
+
+PROC real.clock (CHAN SIGNAL tick!, CHAN TIME hm!)
+  [3]INT hms:
+  #PRAGMA DEFINED hms
+  CHAN SIGNAL tock:
+  CHAN LEVEL intr:
+  PAR
+    digital.input (3, intr!)
+    level.to.signal (intr?, tock!)
+    WHILE TRUE
+      SEQ
+        tock ? SIGNAL
+        chronodot.get.time (hms)
+        hm ! (BYTE hms[0]) ; (BYTE hms[1])
+        tick ! SIGNAL
 :
 
 PROC current.time (CHAN SIGNAL req?, CHAN TIME update?, recent!)
@@ -122,7 +143,7 @@ PROC n.minute.ticker (VAL INT num.minutes, CHAN SIGNAL in?, out!)
 -- A signal is generated on the channel 's'
 -- whenever motion is detected.
 INLINE PROC motion (CHAN SIGNAL s!)
-  pir (5, 2, s!)
+  pir (PIR.POWER, PIR.SENSE, s!)
 :
 --}}}
 
@@ -188,6 +209,7 @@ PROC init.packet (CHAN READING out!)
       r[light]   := 0
       r[temp]    := 0
       out ! r
+      --serial.write.string (TX0, "init.packet*n")
 :
 
 PROC get.type (CHAN READING data.in?, data.out!,
@@ -206,6 +228,7 @@ PROC get.type (CHAN READING data.in?, data.out!,
         clock ? SIGNAL
           r[type] := CLOCK.READING
       data.out ! r
+      --serial.write.string (TX0, "get.type*n")
 :
 
 PROC get.time (CHAN READING data.in?, data.out!,
@@ -217,6 +240,7 @@ PROC get.time (CHAN READING data.in?, data.out!,
       time.req ! SIGNAL
       time.resp ? r[hours] ; r[minutes]
       data.out ! r
+      --serial.write.string (TX0, "get.time*n")
 :
 
 PROC get.data (CHAN READING data.in?, data.out!)
@@ -237,10 +261,15 @@ PROC get.data (CHAN READING data.in?, data.out!)
         temp.resp  ? r[temp]
         -- Send the data out
         data.out ! r
+        --serial.write.string (TX0, "get.data*n")
 :
 
 PROC serial.write.comma (VAL INT port)
   serial.write.string (port, ",")
+:
+
+INLINE PROC serial.write.data.int (VAL INT port, VAL INT n)
+  serial.write.int (port, n)
 :
 
 PROC display (CHAN READING data?)
@@ -248,16 +277,18 @@ PROC display (CHAN READING data?)
     READING r:
     SEQ
       data ? r
-      serial.write.dec.int (TX0, (INT r[hours]))
-      serial.write.comma   (TX0)
-      serial.write.dec.int (TX0, (INT r[minutes]))
-      serial.write.comma   (TX0)
-      serial.write.string  (TX0, [r[type]])
-      serial.write.comma   (TX0)
-      serial.write.dec.int (TX0, r[light])
-      serial.write.comma   (TX0)
-      serial.write.dec.int (TX0, r[temp])
-      serial.write.newline (TX0)
+      serial.write.int (LOG.TX, (INT r[hours]))
+      serial.write.comma   (LOG.TX)
+      serial.write.data.int (LOG.TX, (INT r[minutes]))
+      serial.write.comma   (LOG.TX)
+      serial.write.string  (LOG.TX, [r[type]])
+      serial.write.comma   (LOG.TX)
+      serial.write.data.int (LOG.TX, r[light])
+      serial.write.comma   (LOG.TX)
+      serial.write.data.int (LOG.TX, r[temp])
+      serial.write.newline (LOG.TX)
+      -- Tell the OpenLog to flush the buffer to the SD card.
+      serial.write.byte    (LOG.TX, 26)
 :
 
 PROC main ()
@@ -266,24 +297,32 @@ PROC main ()
   CHAN SIGNAL movement, motion.ok, read.movement:
   CHAN READING a, b, c, d:
   CHAN TIME hms, time.resp:
-  PAR
-    bogo.clock (tick!, hms!) 
-    current.time (time.req?, hms?, time.resp!)
+  SEQ
+    pir.init (PIR.POWER, PIR.SENSE)
+    serial.start (LOG.PORT, 9600)
+    chronodot.write.many (#07, [#FF, #FF, #FF, #FF])
+    -- Wait for the PIR to stabilize
+    delay (5000)
+    PAR
+      --bogo.clock (tick!, hms!) 
+      real.clock (tick!, hms!)
+      current.time (time.req?, hms?, time.resp!)
 
-    init.packet (a!)
-    get.type (a?, b!, read.init?, read.movement?, read.clock?)
-    get.time (b?, c!, time.req!, time.resp?)
-    get.data (c?, d!)
+      init.packet (a!)
+      get.type (a?, b!, read.init?, read.movement?, read.clock?)
+      get.time (b?, c!, time.req!, time.resp?)
+      get.data (c?, d!)
 
-    signal.delta (tick?, motion.tick!, clock.tick!)
-    n.minute.ticker (5, motion.tick?, motion.ok!)
-    n.minute.ticker (10, clock.tick?, read.clock!)
-    
-    init.reading (read.init!)
-    
-    motion (movement!)
-    motion.throttle (movement?, motion.ok?, read.movement!)
-    
-    display (d?)
+      signal.delta (tick?, motion.tick!, clock.tick!)
+      n.minute.ticker (2, motion.tick?, motion.ok!)
+      n.minute.ticker (5, clock.tick?, read.clock!)
+      
+      init.reading (read.init!)
+      --WHILE TRUE
+      --  motion.ok ? SIGNAL 
+      motion (movement!)
+      motion.throttle (movement?, motion.ok?, read.movement!)
+      
+      display (d?)
     
 :

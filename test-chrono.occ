@@ -39,28 +39,48 @@ PROC serial.write.dec.int (VAL INT port, VAL INT n)
 
 PROC main ()
   SEQ
+    serial.start (0, 9600)
     INITIAL [3]INT hms IS [23, 59, 30]:
     chronodot.set.time (hms)
-    WHILE TRUE
-      [3]INT hms:
-      SEQ
-        chronodot.get.time(hms)
-        SEQ i = 0 FOR 3
-          SEQ
-            IF
-              hms[i] = 0
-                serial.write.string (TX0, "00")
-              hms[i] < 10
-                serial.write.string (TX0, "0")
-              TRUE
-                SKIP
-            serial.write.dec.int (TX0, hms[i])
-            IF
-              i <> 2
-                serial.write.string (TX0, ":")
-              TRUE
-                SKIP
-        serial.write.newline (TX0)
+    -- Enable alarm interrupt
+    chronodot.write (#0E, #1D)
+    -- Clear alarm flags
+    chronodot.write (#0F, #00)
+    chronodot.write.many (#07, [#80, #80, #80, #80])
+    CHAN LEVEL intr:
+    PAR
+      digital.input (3, intr!)
+      WHILE TRUE
+        [3]INT hms:
+        TIMER tim:
+        INT t:
+        SEQ
+          chronodot.write (#0F, #00)
+          tim ? t
+          LEVEL any:
+          ALT
+            intr ? any
+              SKIP
+            tim ? AFTER (t PLUS 300)
+              chronodot.write (#0F, #00)
+          chronodot.get.time (hms)
+          chronodot.write (#0F, #00)
+          SEQ i = 0 FOR 3
+            SEQ
+              IF
+                hms[i] = 0
+                  serial.write.string (TX0, "00")
+                hms[i] < 10
+                  serial.write.string (TX0, "0")
+                TRUE
+                  SKIP
+              serial.write.dec.int (TX0, hms[i])
+              IF
+                i <> 2
+                  serial.write.string (TX0, ":")
+                TRUE
+                  SKIP
+          serial.write.newline (TX0)
 :
         
   

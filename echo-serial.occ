@@ -1,0 +1,61 @@
+#INCLUDE "plumbing.module"
+
+VAL [3]BYTE flag IS ['1', '2', '<']:
+PROC main ()
+  [3]BYTE start:
+  SEQ
+    serial.start (0, 9600)
+    serial.start (1, 9600)
+    digital.write(13, HIGH)
+    delay (3000)
+    digital.write(13, LOW)
+    CHAN BYTE b:
+    CHAN SIGNAL die:
+    PAR
+      INITIAL BOOL DONE IS FALSE:
+      WHILE (NOT DONE)
+        BYTE ch:
+        SEQ
+          b ? ch
+          IF
+            ch = 255
+              DONE := FALSE
+            TRUE
+              SEQ
+                digital.write (13, HIGH)
+                serial.write.byte (TX0, ch)
+                serial.write.byte (TX1, ch)
+                digital.write (13, LOW)
+      SEQ i = 0 FOR 30
+        BYTE ch:
+        SEQ
+          ch := (BYTE (65 + (i REM 26)))
+          b ! ch
+          IF
+            (i REM 10) = 0
+              SEQ
+                b ! '*n'
+                b ! #0A
+            TRUE
+              SKIP
+          b ! 255
+    serial.write.string (TX0, "DONE*n")
+    delay (100)
+    STOP
+:
+
+#IF FALSE
+
+    SEQ i = 0 FOR 3
+      serial.read.byte (RX1, start[i])
+    SEQ i = 0 FOR 3
+      IF
+        flag[i] = start[i]
+          SKIP
+        TRUE
+          SEQ
+            serial.write.string (TX0, "ERROR ")
+            serial.write.int (TX0, i)
+    serial.write.string (TX0, "GOOD START*n")
+    delay (1000)
+#ENDIF

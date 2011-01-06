@@ -10,17 +10,15 @@
 -- It may be easily generalized into a "generic PIR"
 -- interface, but that is not the project for today.
 
-PROC pir (VAL INT power.pin, sense.pin, CHAN SIGNAL motion!)
-  SEQ
-    -- serial.write.string (TX0, "Powering down.*n")
+PROC pir.init (VAL INT power.pin, sense.pin)
+  SEQ 
     digital.mode (power.pin, OUTPUT)
     digital.write (power.pin, LOW)
-    delay (1000)
-    -- serial.write.string (TX0, "Powering up.*n")
     digital.write (power.pin, HIGH)
-    -- serial.write.string (TX0, "Stabilizing.*n")
-    delay (5000)
-    -- serial.write.string (TX0, "Sensing.*n")
+:
+
+PROC pir (VAL INT power.pin, sense.pin, CHAN SIGNAL motion!)
+  SEQ
     CHAN LEVEL pir:
     PAR
       digital.input (sense.pin, pir!)
