@@ -194,7 +194,7 @@ PROC temp.sensor (CHAN SIGNAL req?, CHAN INT resp!)
     convert.temp (raw?, resp!)
 : 
 
-PROC init.reading (CHAN SIGNAL s!)
+INLINE PROC trigger.initial.reading (CHAN SIGNAL s!)
   s ! SIGNAL
 :
 
@@ -265,7 +265,7 @@ PROC get.data (CHAN READING data.in?, data.out!)
 :
 
 PROC serial.write.comma (VAL INT port)
-  serial.write.string (port, ",")
+  serial.write.byte (port, ',')
 :
 
 INLINE PROC serial.write.data.int (VAL INT port, VAL INT n)
@@ -277,18 +277,18 @@ PROC display (CHAN READING data?)
     READING r:
     SEQ
       data ? r
-      serial.write.int (LOG.TX, (INT r[hours]))
-      serial.write.comma   (LOG.TX)
+      serial.write.data.int (LOG.TX, (INT r[hours]))
+      serial.write.comma    (LOG.TX)
       serial.write.data.int (LOG.TX, (INT r[minutes]))
-      serial.write.comma   (LOG.TX)
-      serial.write.string  (LOG.TX, [r[type]])
-      serial.write.comma   (LOG.TX)
+      serial.write.comma    (LOG.TX)
+      serial.write.string   (LOG.TX, [r[type]])
+      serial.write.comma    (LOG.TX)
       serial.write.data.int (LOG.TX, r[light])
-      serial.write.comma   (LOG.TX)
+      serial.write.comma    (LOG.TX)
       serial.write.data.int (LOG.TX, r[temp])
-      serial.write.newline (LOG.TX)
+      serial.write.newline  (LOG.TX)
       -- Tell the OpenLog to flush the buffer to the SD card.
-      serial.write.byte    (LOG.TX, 26)
+      serial.write.byte     (LOG.TX, 26)
 :
 
 PROC main ()
@@ -299,7 +299,7 @@ PROC main ()
   CHAN TIME hms, time.resp:
   SEQ
     pir.init (PIR.POWER, PIR.SENSE)
-    serial.start (LOG.PORT, 9600)
+    serial.start (LOG.PORT, 57600)
     chronodot.write.many (#07, [#FF, #FF, #FF, #FF])
     -- Wait for the PIR to stabilize
     delay (5000)
@@ -317,12 +317,11 @@ PROC main ()
       n.minute.ticker (2, motion.tick?, motion.ok!)
       n.minute.ticker (5, clock.tick?, read.clock!)
       
-      init.reading (read.init!)
+      trigger.initial.reading (read.init!)
       --WHILE TRUE
       --  motion.ok ? SIGNAL 
       motion (movement!)
       motion.throttle (movement?, motion.ok?, read.movement!)
       
       display (d?)
-    
 :

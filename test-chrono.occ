@@ -55,9 +55,9 @@ PROC main ()
         TIMER tim:
         INT t:
         SEQ
-          chronodot.write (#0F, #00)
           tim ? t
           LEVEL any:
+          chronodot.write (#0F, #00)
           ALT
             intr ? any
               SKIP
