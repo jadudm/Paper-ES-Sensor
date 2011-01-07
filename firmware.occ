@@ -4,11 +4,6 @@
 #INCLUDE "pir.module"
 #INCLUDE "chronodot.module"
 
--- SET THE TIME BEFORE FLASHING
-VAL INT INIT.HOURS IS 21:
-VAL INT INIT.MINUTES IS 59:
-
-
 VAL INT TEMP.SENSOR.PIN IS A1:
 VAL INT LIGHT.SENSOR.PIN IS A0:
 VAL INT PIR.POWER IS 5:
@@ -25,10 +20,8 @@ VAL INT ALERT.MOTION.IGNORE.PIN IS 9:
 VAL INT ALERT.MOTION.DETECTED.PIN IS 13:
 VAL INT ALERT.STATUS.PIN IS 13:
 
-VAL INT CLOCK.READ.MINUTES IS  10:
-VAL INT MOTION.READ.MINUTES IS  5:
-
-VAL BYTE CTRLZ IS 26:
+VAL INT CLOCK.READ.MINUTES IS  5:
+VAL INT MOTION.READ.MINUTES IS 2:
 
 DATA TYPE READING
   RECORD
@@ -53,16 +46,12 @@ INLINE PROC clear.clock.flags ()
   chronodot.write (#0F, #00)
 :
 
-PROC setup.clock (VAL INT hrs, min)
+PROC setup.clock ()
   SEQ
-    INITIAL [3]INT hms IS [hrs, min, 0]:
-    chronodot.set.time (hms)
     -- Enable alarm interrupt
     chronodot.write (#0E, #1E)
     -- Clear alarm flags
     clear.clock.flags()
-    -- Enable an alarm every second, using Alarm 1.
-    -- chronodot.write.many (#07, [#80, #80, #80, #80])
     -- Enable an alarm every minute, using Alarm 2.
     chronodot.write.many (#0B, [#80, #80, #80])
 :
@@ -108,8 +97,6 @@ PROC n.minute.ticker (VAL INT num.minutes, CHAN SIGNAL in?, out!)
 
 --{{{ PROC motion (SIGNAL s!)
 -- Monitors the Modern Device PIR sensor.
--- Pin 5 is used to power the sensor.
--- Pin 2 is used to monitor the sensor.
 -- A signal is generated on the channel 's'
 -- whenever motion is detected.
 INLINE PROC motion (CHAN SIGNAL s!)
@@ -205,8 +192,8 @@ PROC get.time (CHAN READING data.in?, data.out!)
     [3]BYTE smh:
     READING r:
     SEQ
-      -- Raw brings in the time backwards.
       data.in ? r
+      -- Raw brings in the time backwards.
       chronodot.get.time.raw (smh)
       r[hours] := smh[2]
       r[minutes] := smh[1]
@@ -264,7 +251,7 @@ PROC display (CHAN READING data?)
 :
 
 PROC main ()
-  CHAN SIGNAL tick, motion.tick, clock.tick, time.req:
+  CHAN SIGNAL tick, motion.tick, clock.tick:
   CHAN SIGNAL read.init, read.clock:
   CHAN SIGNAL movement, motion.ok, read.movement:
   CHAN READING a, b, c, d:
@@ -279,8 +266,8 @@ PROC main ()
 
     -- The OpenLog runs at 9600 by default.
     serial.start (LOG.PORT, 9600)
-    -- Set the current time.
-    setup.clock (INIT.HOURS, INIT.MINUTES)
+    -- Get the clock ready to go.
+    setup.clock ()
 
     -- pir.init powers up the PIR and waits 5 seconds.
     pir.init (PIR.POWER, PIR.SENSE)

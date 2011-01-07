@@ -1,0 +1,10 @@
+#INCLUDE "plumbing.module"
+#INCLUDE "chronodot.module"
+
+VAL INT HOURS IS   13:
+VAL INT MINUTES IS 31:
+VAL INT SECONDS IS 00:
+
+PROC main ()
+  chronodot.set.time ([HOURS, MINUTES, SECONDS])
+:
