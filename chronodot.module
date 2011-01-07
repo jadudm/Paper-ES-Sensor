@@ -35,7 +35,7 @@ PROC chronodot.get.time (RESULT [3]INT hms)
 :
 
 INLINE PROC chonodot.get.time.raw (RESULT [3]BYTE bcd.smh)
-  chronodot.read.many (#00, b)
+  chronodot.read.many (#00, bcd.smh)
 :
 
 BYTE FUNCTION to.bcd (VAL BYTE n)

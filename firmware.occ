@@ -16,6 +16,9 @@ VAL BYTE MOTION.READING IS 'M':
 VAL INT LOG.TX IS TX0:
 VAL INT LOG.PORT IS 0:
 
+VAL INT INIT.HOURS IS 15:
+VAL INT INIT.MINUTES IS 45:
+
 DATA TYPE READING
   RECORD
     BYTE hours:
@@ -26,44 +29,6 @@ DATA TYPE READING
 :
 
 PROTOCOL TIME IS BYTE ; BYTE:
-
-PROC serial.write.dec.int (VAL INT port, VAL INT n)
-  INITIAL INT index IS 0:
-  INITIAL INT number IS n:
-  INITIAL BOOL neg IS FALSE:
-  IF
-    n = 0
-      serial.write.string (port, "0")
-    TRUE
-      SEQ
-        IF
-          n < 0
-            SEQ
-              neg := TRUE
-              number := n * (- 1)
-          TRUE
-            SKIP
-        IF 
-          neg 
-            serial.write.string (port, "-")
-          TRUE 
-            SKIP
-        INITIAL BOOL LEADING IS TRUE:
-        WHILE (index < 5)
-          INT digit:
-          SEQ
-            digit := number / dec.powers[index]
-            number := number REM dec.powers[index]
-            IF
-              LEADING AND (digit = 0)
-                SKIP 
-              (digit <> 0) OR (NOT LEADING) 
-                SEQ
-                  LEADING := FALSE
-                  digit := digit + (INT '0')
-                  serial.write.byte(port, (BYTE digit))
-            index := index + 1
-:
 
 PROC bogo.clock (CHAN SIGNAL tick!, CHAN TIME hm!)
   [3]INT hms:
@@ -76,20 +41,47 @@ PROC bogo.clock (CHAN SIGNAL tick!, CHAN TIME hm!)
       tick ! SIGNAL
 :
 
+INLINE PROC clear.clock.flags ()
+  -- Clear alarm flags
+  chronodot.write (#0F, #00)
+:
+
+PROC setup.clock (VAL INT hrs, min)
+  SEQ
+    INITIAL [3]INT hms IS [hrs, min, 0]:
+    chronodot.set.time (hms)
+    -- Enable alarm interrupt
+    chronodot.write (#0E, #1E)
+    -- Clear alarm flags
+    clear.clock.flags()
+    -- Enable an alarm every second
+    -- chronodot.write.many (#07, [#80, #80, #80, #80])
+    -- Every minute
+    chronodot.write.many (#0B, [#80, #80, #80])
+:
+
 PROC real.clock (CHAN SIGNAL tick!, CHAN TIME hm!)
   [3]INT hms:
   #PRAGMA DEFINED hms
   CHAN SIGNAL tock:
   CHAN LEVEL intr:
-  PAR
-    digital.input (3, intr!)
-    level.to.signal (intr?, tock!)
-    WHILE TRUE
-      SEQ
-        tock ? SIGNAL
-        chronodot.get.time (hms)
-        hm ! (BYTE hms[0]) ; (BYTE hms[1])
-        tick ! SIGNAL
+  SEQ
+    -- Send out an initial tick
+    chronodot.get.time (hms)
+    hm ! (BYTE hms[0]) ; (BYTE hms[1])
+    PAR
+      digital.input (3, intr!)
+      level.to.signal (intr?, tock!)
+      WHILE TRUE
+        SEQ
+          digital.write (13, HIGH)
+          clear.clock.flags()
+          tock ? SIGNAL
+          clear.clock.flags()
+          digital.write (13, LOW)
+          chronodot.get.time (hms)
+          hm ! (BYTE hms[0]) ; (BYTE hms[1])
+          tick ! SIGNAL
 :
 
 PROC current.time (CHAN SIGNAL req?, CHAN TIME update?, recent!)
@@ -98,7 +90,9 @@ PROC current.time (CHAN SIGNAL req?, CHAN TIME update?, recent!)
   WHILE TRUE
     ALT
       update ? hours ; minutes
-        SKIP  
+        -- Any time we get an update, we're ready.
+        -- This matters if we're kickstarting the process.
+        READY := TRUE  
       -- On the first read, make sure we wait.
       NOT READY & req ? SIGNAL
         SEQ
@@ -208,7 +202,9 @@ PROC init.packet (CHAN READING out!)
       r[type]    := 'X'
       r[light]   := 0
       r[temp]    := 0
+      digital.write (12, HIGH)
       out ! r
+      digital.write (12, LOW)
       --serial.write.string (TX0, "init.packet*n")
 :
 
@@ -219,6 +215,7 @@ PROC get.type (CHAN READING data.in?, data.out!,
     SEQ
       -- Grab the packet
       data.in ? r
+      digital.write (11, HIGH)
       -- Who asked for a reading?
       ALT
         init ? SIGNAL
@@ -228,6 +225,7 @@ PROC get.type (CHAN READING data.in?, data.out!,
         clock ? SIGNAL
           r[type] := CLOCK.READING
       data.out ! r
+      digital.write (11, LOW)
       --serial.write.string (TX0, "get.type*n")
 :
 
@@ -237,9 +235,11 @@ PROC get.time (CHAN READING data.in?, data.out!,
     READING r:
     SEQ
       data.in ? r
+      digital.write (10, HIGH)
       time.req ! SIGNAL
       time.resp ? r[hours] ; r[minutes]
       data.out ! r
+      digital.write (10, LOW)
       --serial.write.string (TX0, "get.time*n")
 :
 
@@ -253,6 +253,7 @@ PROC get.data (CHAN READING data.in?, data.out!)
       READING r:
       SEQ
         data.in ? r
+        digital.write (9, HIGH)
         -- Get the light level
         light.req ! SIGNAL
         light.resp ? r[light]
@@ -261,6 +262,7 @@ PROC get.data (CHAN READING data.in?, data.out!)
         temp.resp  ? r[temp]
         -- Send the data out
         data.out ! r
+        digital.write (9, LOW)
         --serial.write.string (TX0, "get.data*n")
 :
 
@@ -288,7 +290,7 @@ PROC display (CHAN READING data?)
       serial.write.data.int (LOG.TX, r[temp])
       serial.write.newline  (LOG.TX)
       -- Tell the OpenLog to flush the buffer to the SD card.
-      serial.write.byte     (LOG.TX, 26)
+      -- serial.write.byte     (LOG.TX, 26)
 :
 
 PROC main ()
@@ -298,11 +300,16 @@ PROC main ()
   CHAN READING a, b, c, d:
   CHAN TIME hms, time.resp:
   SEQ
+    SEQ i = 0 FOR 4
+      digital.mode (9 + i, OUTPUT)
+    digital.write (13, HIGH)
     pir.init (PIR.POWER, PIR.SENSE)
     serial.start (LOG.PORT, 57600)
-    chronodot.write.many (#07, [#FF, #FF, #FF, #FF])
+    serial.write.byte (TX0, '*n')
+    setup.clock (INIT.HOURS, INIT.MINUTES)
     -- Wait for the PIR to stabilize
     delay (5000)
+    digital.write (13, LOW)
     PAR
       --bogo.clock (tick!, hms!) 
       real.clock (tick!, hms!)
@@ -311,17 +318,17 @@ PROC main ()
       init.packet (a!)
       get.type (a?, b!, read.init?, read.movement?, read.clock?)
       get.time (b?, c!, time.req!, time.resp?)
-      get.data (c?, d!)
+      -- get.data (c?, d!)
 
       signal.delta (tick?, motion.tick!, clock.tick!)
-      n.minute.ticker (2, motion.tick?, motion.ok!)
-      n.minute.ticker (5, clock.tick?, read.clock!)
+      n.minute.ticker (1, motion.tick?, motion.ok!)
+      n.minute.ticker (1, clock.tick?, read.clock!)
       
       trigger.initial.reading (read.init!)
-      --WHILE TRUE
-      --  motion.ok ? SIGNAL 
-      motion (movement!)
-      motion.throttle (movement?, motion.ok?, read.movement!)
+      WHILE TRUE
+        motion.ok ? SIGNAL 
+      -- motion (movement!)
+      -- motion.throttle (movement?, motion.ok?, read.movement!)
       
-      display (d?)
+      display (c?)
 :
