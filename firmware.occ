@@ -19,7 +19,8 @@ VAL INT LOG.PORT IS 0:
 VAL INT INIT.HOURS IS 19:
 VAL INT INIT.MINUTES IS 18:
 
-VAL INT ALERT.IGNORE.MOTION.PIN IS 9:
+VAL INT ALERT.MOTION.IGNORE.PIN IS 9:
+VAL INT ALERT.MOTION.DETECTED.PIN IS 13:
 VAL INT ALERT.STATUS.PIN IS 13:
 
 VAL INT CLOCK.READ.MINUTES IS  10:
@@ -128,11 +129,12 @@ PROC motion.throttle (CHAN SIGNAL motion?, reset?, out!)
       NOT IGNORING & motion ? SIGNAL
         SEQ
           out ! SIGNAL
+          alert.led (ALERT.MOTION.DETECTED.PIN)
           IGNORING := TRUE
       -- We must be ignoring the motion sensor, so read in the 
       -- SIGNAL and then do nothing.
       IGNORING & motion ? SIGNAL
-        alert.led (ALERT.IGNORE.MOTION.PIN)
+        alert.led (ALERT.MOTION.IGNORE.PIN)
 :
 
 PROC light.sensor (CHAN SIGNAL req?, CHAN INT resp!)
@@ -253,7 +255,10 @@ PROC display (CHAN READING data?)
       serial.write.data.int (LOG.TX, r[temp])
       serial.write.newline  (LOG.TX)
       -- Tell the OpenLog to flush the buffer to the SD card.
-      serial.write.byte     (LOG.TX, CTRLZ)
+      -- WARNING: This just seems to stick a #1A (DEC 26) in
+      -- the data. Not what we want. How do we force a buffer
+      -- flush in the OpenLog?
+      -- serial.write.byte     (LOG.TX, CTRLZ)
 :
 
 PROC main ()
@@ -263,14 +268,15 @@ PROC main ()
   CHAN READING a, b, c, d:
   SEQ
     -- Set up alert LEDs
-    digital.mode (ALERT.IGNORE.MOTION.PIN, OUTPUT)
+    digital.mode (ALERT.MOTION.IGNORE.PIN, OUTPUT)
+    digital.mode (ALERT.MOTION.DETECTED.PIN, OUTPUT)
     digital.mode (ALERT.STATUS.PIN, OUTPUT)
     
     -- Indicate that we're going through the init process.
     digital.write (ALERT.STATUS.PIN, HIGH)
 
-    -- The OpenLog runs at 57600 by default.
-    serial.start (LOG.PORT, 57600)
+    -- The OpenLog runs at 9600 by default.
+    serial.start (LOG.PORT, 9600)
     -- Set the current time.
     setup.clock (INIT.HOURS, INIT.MINUTES)
 
