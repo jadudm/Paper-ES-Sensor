@@ -13,11 +13,12 @@
 PROC pir.init (VAL INT power.pin, sense.pin)
   SEQ 
     digital.mode (power.pin, OUTPUT)
-    digital.write (power.pin, LOW)
+    digital.mode (sense.pin, INPUT)
     digital.write (power.pin, HIGH)
+    delay(5000)
 :
 
-PROC pir (VAL INT power.pin, sense.pin, CHAN SIGNAL motion!)
+PROC pir (VAL INT sense.pin, CHAN SIGNAL motion!)
   SEQ
     CHAN LEVEL pir:
     PAR

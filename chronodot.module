@@ -34,7 +34,7 @@ PROC chronodot.get.time (RESULT [3]INT hms)
       hms[2 - i] := ((((INT b[i]) BITAND MASKS[i]) >> 4) * 10) + ((INT b[i]) BITAND #0F)
 :
 
-INLINE PROC chonodot.get.time.raw (RESULT [3]BYTE bcd.smh)
+INLINE PROC chronodot.get.time.raw (RESULT [3]BYTE bcd.smh)
   chronodot.read.many (#00, bcd.smh)
 :
 
