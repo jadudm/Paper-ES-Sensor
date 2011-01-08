@@ -19,6 +19,7 @@ VAL INT LOG.PORT IS 0:
 VAL INT ALERT.MOTION.IGNORE.PIN IS 9:
 VAL INT ALERT.DATA.STORED.PIN IS 13:
 VAL INT ALERT.STATUS.PIN IS 13:
+VAL INT ALERT.TICK.PIN IS 13:
 
 VAL INT CLOCK.READ.MINUTES IS  5:
 VAL INT MOTION.READ.MINUTES IS 2:
@@ -32,11 +33,13 @@ DATA TYPE READING
     INT  light:
 :
 
-PROC alert.led (VAL INT pin)
-  SEQ
-    digital.write (pin, HIGH)
-    delay(300)
-    digital.write (pin, LOW)
+PROC alert.led (VAL INT pin, VAL INT ms, VAL INT blinks)
+  SEQ i = 0 FOR blinks
+    SEQ
+      digital.write (pin, HIGH)
+      delay(ms)
+      digital.write (pin, LOW)
+      delay(ms)
 :
 
 INLINE PROC clear.clock.flags ()
@@ -62,8 +65,9 @@ PROC real.clock (CHAN SIGNAL tick!)
       SEQ
         LEVEL any:
         intr ? any
-        clear.clock.flags ()
         tick ! SIGNAL
+        clear.clock.flags ()
+        alert.led (ALERT.TICK.PIN, 50, 4)
 :
  
 PROC signal.delta (CHAN SIGNAL in?, o1!, o2!)
@@ -89,8 +93,8 @@ PROC n.minute.ticker (VAL INT num.minutes, CHAN SIGNAL in?, out!)
           SKIP
         TRUE
           SEQ
-            out ! SIGNAL
             counter := num.minutes
+            out ! SIGNAL
 :
 
 --{{{ PROC motion (SIGNAL s!)
@@ -115,32 +119,17 @@ PROC motion.throttle (CHAN SIGNAL motion?, reset?, out!)
       -- ignoring it until the next reset comes in.
       NOT IGNORING & motion ? SIGNAL
         SEQ
-          out ! SIGNAL
           IGNORING := TRUE
+          out ! SIGNAL
       -- We must be ignoring the motion sensor, so read in the 
       -- SIGNAL and then do nothing.
       IGNORING & motion ? SIGNAL
-        alert.led (ALERT.MOTION.IGNORE.PIN)
+        alert.led (ALERT.MOTION.IGNORE.PIN, 100, 2)
 :
 
 PROC light.sensor (CHAN SIGNAL req?, CHAN INT resp!)
   adc (LIGHT.SENSOR.PIN, VCC, req?, resp!)
 :
-
--- Output should end up in degrees C, and therefore
--- always within the range of a BYTE.
-PROC convert.temp (CHAN INT in?, CHAN INT out!)
-  WHILE TRUE
-    INT32 lv:
-    INT v:
-    SEQ
-      in ? v
-      lv := (INT32 v)
-      lv := (lv * 250) / 1024
-      out ! (INT lv)
-:
-
---}}}
 
 PROC temp.sensor (CHAN SIGNAL req?, CHAN INT resp!)
   --CHAN INT raw:
@@ -240,7 +229,7 @@ PROC display (CHAN READING data?)
       serial.write.comma    (LOG.TX)
       serial.write.data.int (LOG.TX, r[temp])
       serial.write.newline  (LOG.TX)
-      alert.led (ALERT.DATA.STORED.PIN)
+      alert.led (ALERT.DATA.STORED.PIN, 300, 3)
 :
 
 PROC main ()
