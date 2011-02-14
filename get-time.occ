@@ -12,12 +12,6 @@ PROC main ()
   BYTE day:
   SEQ
     serial.start(0, 57600)
-    serial.write.string (TX0, "SETTING TIME*n")
-    delay(1000)
-    
-    chronodot.set.time ([HOURS, MINUTES, SECONDS])
-    chronodot.set.day  (DAY.OF.WEEK)
-    
     serial.write.string (TX0, "GETTING TIME*n")
     delay(1000)
     

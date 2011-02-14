@@ -56,4 +56,12 @@ PROC chronodot.set.time (VAL [3]INT hms)
     chronodot.write.many (#00, bcd.smh) 
 :
 
+INLINE PROC chronodot.set.day (VAL BYTE day)
+  chronodot.write (#03, day)
+:
+
+INLINE PROC chronodot.get.day (RESULT BYTE day)
+  chronodot.read (#03, day)
+:  
+
 #ENDIF
