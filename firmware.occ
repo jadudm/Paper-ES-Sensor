@@ -190,7 +190,10 @@ PROC get.time (CHAN READING data.in?, data.out!)
       r[hours] := smh[2]
       r[minutes] := smh[1]
       
-      chronodot.get.day(r[day])
+      BYTE day:
+      SEQ
+        chronodot.get.day(day)
+        r[day] := day
       
       data.out ! r
 :
