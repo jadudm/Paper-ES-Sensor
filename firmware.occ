@@ -4,6 +4,7 @@
 #INCLUDE "pir.module"
 #INCLUDE "chronodot.module"
 
+VAL INT32 COMMS.SPEED IS 9600:
 VAL INT TEMP.SENSOR.PIN IS A1:
 VAL INT LIGHT.SENSOR.PIN IS A0:
 VAL INT PIR.POWER IS 5:
@@ -247,13 +248,17 @@ PROC main ()
     digital.write (ALERT.STATUS.PIN, HIGH)
 
     -- The OpenLog runs at 9600 by default.
-    serial.start (LOG.PORT, 9600)
+    serial.start (LOG.PORT, COMMS.SPEED)
     -- Get the clock ready to go.
     setup.clock ()
 
     -- pir.init powers up the PIR and waits 5 seconds.
-    pir.init (PIR.POWER, PIR.SENSE)
-
+    -- 20110213 - Powered via 5V bus.
+    -- pir.init (PIR.POWER, PIR.SENSE)
+    
+    -- Make sure everyone is awake, let PIR settle, etc.
+    delay(10000)
+    
     -- Turn off the startup indicator.
     digital.write (ALERT.STATUS.PIN, LOW)
 
