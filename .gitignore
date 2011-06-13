@@ -3,4 +3,6 @@
 *.tce
 *.tbc
 *.hex
+*.ihex
 *.swp
+*~
